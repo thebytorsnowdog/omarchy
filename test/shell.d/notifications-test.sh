@@ -183,6 +183,27 @@ assertEqual(
   'notifications render an escaped bold name ahead of a real newline'
 )
 
+const literalMarkup = 'Use &lt;br/&gt; here and &lt;b&gt;bold&lt;/b&gt;\nKeep &lt;i&gt;italic&lt;/i&gt; and &lt;u&gt;underline&lt;/u&gt; literal'
+for (const [app, icon] of [
+  ['Terminal', 'utilities-terminal'],
+  ['Chromium', 'chromium'],
+  ['KDE Connect helper', 'kdeconnect'],
+  ['kde connect', 'kdeconnect'],
+  ['Mail', 'KDE Connect'],
+  ['', 'kdeconnect'],
+]) {
+  assertEqual(
+    notifications.styledBody(literalMarkup, app, icon),
+    literalMarkup.replace('\n', '<br/>'),
+    `notifications preserve escaped literal tags from ${app || 'an unnamed sender'}`
+  )
+}
+assertEqual(
+  notifications.styledBody('<b>raw</b> and &lt;b&gt;literal&lt;/b&gt;\n<img src="http://host/x.png">kept', 'Terminal', ''),
+  '<b>raw</b> and &lt;b&gt;literal&lt;/b&gt;<br/>kept',
+  'ordinary notifications retain raw and escaped markup while stripping raw images'
+)
+
 // Every spelling of an escaped tag we mean to decode.
 const decodedMarkup = [
   ['&lt;b&gt;bold&lt;/b&gt;', '<b>bold</b>', 'bold'],

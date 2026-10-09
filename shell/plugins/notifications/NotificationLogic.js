@@ -116,7 +116,11 @@ function unescapeMarkup(text) {
 }
 
 function sanitizeBody(body, app, appIcon) {
-  var text = stripImageTags(unescapeMarkup(String(body || "")))
+  var text = String(body || "")
+  // KDE Connect relays escaped markup. Other senders may escape literal tags
+  // deliberately, so their bodies must retain those entities for the renderer.
+  if (app === "KDE Connect") text = unescapeMarkup(text)
+  text = stripImageTags(text)
   if (!isChromiumDerived(app, appIcon)) return text
 
   return text
