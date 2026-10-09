@@ -13,10 +13,15 @@ command_path=$(/usr/bin/readlink -e -- "${BASH_SOURCE[0]}") || {
   echo "Could not resolve the Omarchy lock helper." >&2
   exit 1
 }
-source_root=${command_path%/bin/*}
-if [[ $source_root == "$command_path" ]]; then
-  echo "Could not resolve the Omarchy source root." >&2
-  exit 1
+# The package installs commands in /usr/bin and their source tree here.
+if [[ ${command_path%/*} == "/usr/bin" ]]; then
+  source_root=/usr/share/omarchy
+else
+  source_root=${command_path%/bin/*}
+  if [[ $source_root == "$command_path" ]]; then
+    echo "Could not resolve the Omarchy source root." >&2
+    exit 1
+  fi
 fi
 
 # Install and upgrade callers can start this helper as root. Ignore their PATH
