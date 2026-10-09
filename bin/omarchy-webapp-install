@@ -82,38 +82,85 @@ require_http_url() {
   fi
 }
 
-# Validate URL is public (not private/internal) and HTTP/HTTPS only
+# Parse the authority once for validation, first-party icon paths and Google's
+# hostname-only fallback. DNS and redirect destinations are not checked here.
+parse_icon_url() {
+  /usr/bin/python3 - "$1" <<'PY'
+import ipaddress
+import re
+import sys
+from urllib.parse import urlencode, urlsplit
+
+try:
+  url = sys.argv[1]
+  if any(character.isspace() or ord(character) < 32 for character in url):
+    raise ValueError
+  parsed = urlsplit(url)
+  if parsed.scheme not in ("http", "https") or not parsed.hostname:
+    raise ValueError
+  # Accessing port validates both its decimal syntax and range.
+  parsed.port
+  host = parsed.hostname
+  address = None
+  if parsed.netloc.rsplit("@", 1)[-1].startswith("["):
+    address = ipaddress.IPv6Address(host)
+    if address.scope_id is not None:
+      raise ValueError
+    host = str(address)
+  else:
+    host = host.encode("idna").decode("ascii").lower().removesuffix(".")
+    # Curl also accepts shortened, octal and hexadecimal IPv4 literals.
+    # Require four canonical decimal octets before converting any number.
+    numeric_host = r"(?:[0-9]+|0x[0-9a-f]+)(?:\.(?:[0-9]+|0x[0-9a-f]+))*"
+    if re.fullmatch(numeric_host, host):
+      octets = host.split(".")
+      if len(octets) != 4 or any(
+        not re.fullmatch(r"0|[1-9][0-9]{0,2}", octet)
+        for octet in octets
+      ):
+        raise ValueError
+      if any(int(octet, 10) > 255 for octet in octets):
+        raise ValueError
+      address = ipaddress.IPv4Address(host)
+    elif not all(
+      re.fullmatch(r"[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?", label)
+      for label in host.split(".")
+    ) or len(host) > 253:
+      raise ValueError
+except (ValueError, UnicodeError):
+  print("Error: Invalid HTTP/HTTPS icon URL.", file=sys.stderr)
+  sys.exit(1)
+
+# IPv4-mapped IPv6 addresses must use the same private-address policy as IPv4.
+if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+  address = address.ipv4_mapped
+private_networks = (
+  "0.0.0.0/8", "10.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16",
+  "172.16.0.0/12", "192.168.0.0/16", "::/128", "::1/128",
+  "fc00::/7", "fe80::/10",
+)
+if host == "localhost" or host.endswith(".localhost") or (
+  address is not None
+  and any(address in ipaddress.ip_network(network) for network in private_networks)
+):
+  print("Error: Private/internal URLs not allowed", file=sys.stderr)
+  sys.exit(1)
+
+print(f"{parsed.scheme}://{parsed.netloc}")
+print("https://www.google.com/s2/favicons?" + urlencode({"domain": host, "sz": 256}))
+PY
+}
+
 validate_public_url() {
-  local url=$1
-  local host
-  host=$(sed -E 's|^https?://([^/]+).*|\1|' <<<"$url" | cut -d: -f1)
-
-  case $host in
-    localhost|127.*|10.*|192.168.*|169.254.*|::1|fe80::) 
-      echo "Error: Private/internal URLs not allowed" >&2
-      return 1
-      ;;
-    172.*)
-      IFS=. read -r _ a b _ <<<"$host"
-      if (( a >= 16 && a <= 31 )); then
-        echo "Error: Private/internal URLs not allowed" >&2
-        return 1
-      fi
-      ;;
-  esac
-
-  if [[ ! ${url,,} =~ ^https?:// ]]; then
-    echo "Error: Only HTTP/HTTPS allowed" >&2
-    return 1
-  fi
+  parse_icon_url "$1" >/dev/null
 }
 
 fetch_site_icon() {
   local site_url="$1" dest="$2"
-  validate_public_url "$site_url" || return 1
-
-  local origin page icon_url
-  origin=$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")
+  local url_parts origin page icon_url google_url
+  url_parts=$(parse_icon_url "$site_url") || return 1
+  origin=${url_parts%%$'\n'*}
+  google_url=${url_parts#*$'\n'}
 
   # Prefer the site's own high-res icon (apple-touch-icon is typically 180px+),
   # then the well-known path, then Google's favicon service as a last resort.
@@ -128,11 +175,9 @@ fetch_site_icon() {
   ?*) icon_url="$origin/$icon_url" ;;
   esac
 
-  local google_domain="${origin#*://}"
-
   { [[ -n $icon_url ]] && download_icon "$icon_url" "$dest"; } ||
     download_icon "$origin/apple-touch-icon.png" "$dest" ||
-    download_icon "https://www.google.com/s2/favicons?domain=${google_domain}&sz=256" "$dest"
+    download_icon "$google_url" "$dest"
 }
 
 desktop_string_escape() {
@@ -213,7 +258,7 @@ if [[ -z $ICON_REF ]]; then
     exit 1
   fi
   gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
-elif [[ $ICON_REF =~ ^https?:// ]]; then
+elif [[ ${ICON_REF,,} =~ ^https?:// ]]; then
   ICON_VALUE=$(safe_icon_name "$APP_NAME")
   mkdir -p "$ICON_DIR"
   validate_public_url "$ICON_REF" || exit 1
