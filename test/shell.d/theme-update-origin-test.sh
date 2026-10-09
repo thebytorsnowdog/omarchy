@@ -2,13 +2,15 @@
 
 set -euo pipefail
 
-# Theme update reads the stored Git origin rather than the install argument, so
-# existing clones need the same transport policy immediately before pull.
+# Theme update reads the branch's stored fetch destination rather than the
+# install argument, so existing clones need the transport policy before pull.
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL="$test_tmp/home/.gitconfig"
 
 theme="$test_tmp/home/.config/omarchy/themes/transport"
 mock_bin="$test_tmp/bin"
@@ -23,8 +25,8 @@ cat >"$mock_bin/git" <<'SH'
 #!/bin/bash
 for arg in "$@"; do
   if [[ $arg == "pull" ]]; then
-    printf '%s\n' "$*" >"$OMARCHY_TEST_PULL_MARKER"
-    exit 70
+    printf '%s\n' "$*" >>"$OMARCHY_TEST_PULL_MARKER"
+    exit "${OMARCHY_TEST_PULL_STATUS:-70}"
   fi
 done
 exec "$OMARCHY_TEST_REAL_GIT" "$@"
@@ -38,8 +40,9 @@ SH
 chmod +x "$mock_bin"/*
 
 update_theme() {
-  HOME="$test_tmp/home" PATH="$mock_bin:$ROOT/bin:$PATH" OMARCHY_TEST_THEME="$theme" \
+  HOME="$test_tmp/home" PATH="$mock_bin:$ROOT/bin:$PATH" OMARCHY_TEST_THEME="${1:-$theme}" \
     OMARCHY_TEST_PULL_MARKER="$pull_marker" OMARCHY_TEST_REAL_GIT="$real_git" \
+    OMARCHY_TEST_PULL_STATUS="${2:-70}" \
     bash "$ROOT/bin/omarchy-theme-update" >"$test_tmp/out" 2>&1
 }
 
@@ -134,6 +137,68 @@ update_theme && fail "the pull stub fails after accepting the direct secure bran
 [[ $(<"$pull_marker") == "-C $theme pull -- https://example.com/acme/theme.git" ]] ||
   fail "theme update pulls explicitly from the checked direct branch URL" "$(cat "$pull_marker")"
 
+# '.' normally means this local repository, but Git applies checkout-local
+# insteadOf rules even to that shorthand. Validate its effective destination.
+"$real_git" -C "$theme" config "branch.$branch.remote" .
+rm -f "$pull_marker"
+update_theme && fail "the pull stub fails after accepting the local dot remote"
+[[ $(<"$pull_marker") == "-C $theme pull -- ." ]] ||
+  fail "theme update preserves the normal local dot remote" "$(cat "$pull_marker")"
+pass "theme update preserves an unrewritten local dot remote"
+
+for url in \
+  "git://plain.example/theme.git" \
+  "http://plain.example/theme.git" \
+  "ftp://plain.example/theme.git"; do
+  "$real_git" -C "$theme" config "url.$url.insteadOf" .
+  effective=$("$real_git" -C "$theme" ls-remote --get-url .)
+  [[ $effective == "$url" ]] ||
+    fail "real Git resolves the dot remote without contacting it" "$effective"
+  rm -f "$pull_marker"
+  if update_theme; then
+    fail "theme update refuses a dot remote rewritten to plaintext" "$url"
+  fi
+  [[ ! -e $pull_marker ]] ||
+    fail "theme update checks the effective dot remote before pull" "$(cat "$pull_marker")"
+  grep -qF "network transport is not authenticated" "$test_tmp/out" ||
+    fail "theme update explains a dot rewrite to plaintext" "$(cat "$test_tmp/out")"
+  grep -qF "config branch.$branch.remote URL" "$test_tmp/out" ||
+    fail "theme update gives branch migration guidance for a rewritten dot remote" "$(cat "$test_tmp/out")"
+  "$real_git" -C "$theme" config --unset-all "url.$url.insteadOf"
+done
+pass "theme update refuses plaintext destinations behind the local dot remote"
+
+"$real_git" -C "$theme" config url.http://middle.example/theme.git.insteadOf .
+"$real_git" -C "$theme" config url.https://secure.example/theme.git.insteadOf http://middle.example/theme.git
+rm -f "$pull_marker"
+if update_theme; then
+  fail "theme update refuses the plaintext first step even if another rewrite would be secure"
+fi
+[[ ! -e $pull_marker ]] ||
+  fail "theme update checks the actual single-step dot destination before pull" "$(cat "$pull_marker")"
+"$real_git" -C "$theme" config --unset-all url.http://middle.example/theme.git.insteadOf
+"$real_git" -C "$theme" config --unset-all url.https://secure.example/theme.git.insteadOf
+
+"$real_git" -C "$theme" config url.https://middle.example/theme.git.insteadOf .
+"$real_git" -C "$theme" config url.http://plain.example/theme.git.insteadOf https://middle.example/theme.git
+rm -f "$pull_marker"
+update_theme && fail "the pull stub fails after accepting the secure single-step dot destination"
+[[ $(<"$pull_marker") == "-C $theme pull -- ." ]] ||
+  fail "theme update preserves dot after checking its secure first rewrite" "$(cat "$pull_marker")"
+"$real_git" -C "$theme" config --unset-all url.https://middle.example/theme.git.insteadOf
+"$real_git" -C "$theme" config --unset-all url.http://plain.example/theme.git.insteadOf
+pass "theme update checks the actual single-step dot rewrite rather than a hypothetical chain"
+
+for url in "https://secure.example/theme.git" "$test_tmp/local-theme.git"; do
+  "$real_git" -C "$theme" config "url.$url.insteadOf" .
+  rm -f "$pull_marker"
+  update_theme && fail "the pull stub fails after accepting a secure or local dot rewrite"
+  [[ $(<"$pull_marker") == "-C $theme pull -- ." ]] ||
+    fail "theme update preserves dot after checking its secure or local destination" "$(cat "$pull_marker")"
+  "$real_git" -C "$theme" config --unset-all "url.$url.insteadOf"
+done
+pass "theme update preserves secure and local destinations behind dot rewrites"
+
 "$real_git" -C "$theme" config --unset "branch.$branch.remote"
 "$real_git" -C "$theme" remote add origin https://example.com/acme/theme.git
 
@@ -150,3 +215,29 @@ fi
   fail "theme update checks the expanded origin before pull"
 
 pass "theme update checks the effective URL after Git origin rewriting"
+
+# A refused checkout must not stop an independent secure checkout, and a later
+# successful pull must not erase the earlier refusal from the aggregate status.
+refused_theme="$test_tmp/home/.config/omarchy/themes/refused-http"
+secure_theme="$test_tmp/home/.config/omarchy/themes/secure-https"
+for checkout in "$refused_theme" "$secure_theme"; do
+  mkdir -p "$checkout"
+  "$real_git" -C "$checkout" init -q
+done
+"$real_git" -C "$refused_theme" remote add origin http://example.com/refused.git
+"$real_git" -C "$secure_theme" remote add origin https://example.com/secure.git
+
+for theme_list in "$refused_theme"$'\n'"$secure_theme" "$secure_theme"$'\n'"$refused_theme"; do
+  rm -f "$pull_marker"
+  if update_theme "$theme_list" 0; then
+    fail "theme update reports a refusal despite another theme's successful pull"
+  fi
+  [[ -e $pull_marker ]] || fail "theme update continues to the independent secure checkout"
+  [[ $(<"$pull_marker") == "-C $secure_theme pull -- origin" ]] ||
+    fail "only the secure checkout reaches pull in a mixed batch" "$(cat "$pull_marker")"
+  grep -qF "refused-http cannot be updated from its 'origin' remote" "$test_tmp/out" ||
+    fail "theme update identifies the refused checkout in a mixed batch" "$(cat "$test_tmp/out")"
+  grep -qF "remote set-url origin URL" "$test_tmp/out" ||
+    fail "theme update retains migration guidance in a mixed batch" "$(cat "$test_tmp/out")"
+done
+pass "mixed theme batches continue independent updates and retain failure in both orders"
