@@ -96,6 +96,12 @@ check("a single named bucket keeps its model label", {
   "rateLimitsByLimitId": {"codex_other": {"planType": "pro", "limitName": "Other model",
                                           "primary": window(80)}}
 }, [entry(80, title="Other model · 5h window")])
+for name_metadata in ({}, {"limitName": None}):
+  check("a single unnamed model bucket labels both windows: " + repr(name_metadata), {
+    "rateLimitsByLimitId": {"codex_other": {"planType": "pro", "primary": window(80),
+                                            "secondary": window(42, 10080), **name_metadata}}
+  }, [entry(80, title="codex_other · 5h window"),
+      entry(42, "Weekly (7-day)", "codex_other · Weekly (7-day)")])
 check("unnamed model buckets use their identifiers to distinguish equal windows", {
   "rateLimitsByLimitId": {"codex": legacy, "codex_other": {"primary": window(80)}}
 }, [entry(12, title="codex · 5h window"), entry(80, title="codex_other · 5h window")])

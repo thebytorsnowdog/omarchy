@@ -979,7 +979,7 @@ def fetch_codex_rpc(home=None):
         entry = limit_window(window)
         if entry:
           name = bucket.get("limitName")
-          if name or len(buckets) > 1:
+          if name or limit_id != "codex" or len(buckets) > 1:
             entry["title"] = f"{name or limit_id} · {entry['label']}"
           result["limits"].append(entry)
 
