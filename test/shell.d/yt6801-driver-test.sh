@@ -396,6 +396,29 @@ fi
 [[ ! -e $OMARCHY_MIGRATION_STATE/1788279117.sh && ! -e $OMARCHY_MIGRATION_STATE/1789325478.sh && ! -e $TEST_STATE/later-migration ]] ||
   fail "kernel preparation must not prematurely mark either migration or continue the queue"
 pass "the ordered queue stages the supported kernel and keeps all completion markers pending until reboot"
+
+# The machine-wide kernel marker is already present, but the running kernel
+# still lacks the alias. The nested kernel helper's exit 0 must not complete
+# its calling driver migration or advance the per-user queue on a same-boot
+# retry. Keep the exact staged state and failure from the first attempt.
+: >"$TEST_CALLS"
+if "$ROOT/bin/omarchy-migrate" >"$test_tmp/output" 2>&1; then
+  fail "a same-boot retry must keep the unsupported driver migration pending"
+fi
+[[ -e $TEST_STATE/package && -e $TEST_STATE/module-files && -e $TEST_STATE/vendor-loaded
+  && $(<"$TEST_STATE/bindings/$TEST_DEVICE") == "yt6801" ]] ||
+  fail "a same-boot retry must preserve the complete vendor fallback and binding"
+[[ -e $TEST_STATE/kernel-marker && -e $TEST_STATE/reboot-required ]] ||
+  fail "a same-boot retry must retain the staged kernel and reboot request"
+[[ ! -e $OMARCHY_MIGRATION_STATE/1788279117.sh && ! -e $OMARCHY_MIGRATION_STATE/1789325478.sh
+  && ! -e $TEST_STATE/later-migration ]] ||
+  fail "a nested helper no-op must not complete either migration or advance the queue"
+assert_no_privileges "a same-boot retry must not repeat privileged kernel preparation or cutover"
+if grep -Eq '^(omarchy-pkg-add|limine-mkinitcpio|modprobe|rmmod|tee|pacman -Rns) ' "$TEST_CALLS"; then
+  fail "a same-boot retry must not reinstall, rebuild or cut over drivers" "$(cat "$TEST_CALLS")"
+fi
+pass "same-boot retries keep both migrations pending without repeating kernel preparation or losing the vendor fallback"
+
 TEST_FAULT=probe-noop
 if "$ROOT/bin/omarchy-migrate" >"$test_tmp/output" 2>&1; then
   fail "migration runner must fail when cutover is incomplete"
@@ -405,8 +428,9 @@ fi
 TEST_FAULT=""
 "$ROOT/bin/omarchy-migrate" >"$test_tmp/output" 2>&1
 assert_complete
-[[ -f $OMARCHY_MIGRATION_STATE/1788279117.sh && -f $TEST_STATE/later-migration ]] ||
-  fail "successful retry must mark completion and continue the queue"
+[[ -f $OMARCHY_MIGRATION_STATE/1788279117.sh && -f $OMARCHY_MIGRATION_STATE/1789325478.sh
+  && -f $TEST_STATE/later-migration ]] ||
+  fail "successful retry must mark both migrations complete and continue the queue"
 pass "the real migration runner keeps failures pending and completes successful retries"
 
 if grep -Fxq 'yt6801-dkms' "$ROOT/install/omarchy-other.packages"; then
