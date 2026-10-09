@@ -55,17 +55,22 @@ fi
 # with its own spelling of "don't stop to ask". Pi and Ori have none to skip.
 # A file at ~/.config/omarchy/agents/<agent>.flags replaces those flags with the
 # user's own, one argument per line, skipping blank lines and # comments. An
-# empty file launches with no flags, leaving the agent's own settings to decide.
+# empty file removes these defaults, leaving the agent's own settings to decide.
 # OpenClaw's launcher takes no agent flags, so it has nothing to replace.
 flags_file="$HOME/.config/omarchy/agents/$agent.flags"
 flags=()
 
 unattended() {
   if [[ -f $flags_file ]]; then
-    local flag
-    while read -r flag || [[ -n $flag ]]; do
+    local flag flags_fd
+    if ! exec {flags_fd}<"$flags_file"; then
+      echo "Could not read agent flags file: $flags_file" >&2
+      exit 1
+    fi
+    while read -r -u "$flags_fd" flag || [[ -n $flag ]]; do
       [[ -z $flag || $flag == "#"* ]] || flags+=("$flag")
-    done <"$flags_file"
+    done
+    exec {flags_fd}<&-
   else
     flags=("$@")
   fi
