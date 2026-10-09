@@ -23,14 +23,14 @@ output=""
 url=""
 while (($#)); do
   case "$1" in
-  -o)
+  -o | --output)
     output=$2
     shift 2
     ;;
-  --max-time | --max-redirs)
+  --max-time | --max-redirs | --max-filesize | --proto | --write-out)
     shift 2
     ;;
-  -fsSL)
+  -q | --globoff | -fsS | -fsSL | --)
     shift
     ;;
   *)
@@ -44,8 +44,18 @@ if [[ -n $output ]]; then
   if [[ $CURL_MODE == "fallback" && $url != "https://www.google.com/s2/favicons?"* ]]; then
     exit 1
   fi
-  cp "$ICON_FIXTURE" "$output"
+  case "$url" in
+  */apple-touch-icon.png | */icon.png | "https://www.google.com/s2/favicons?"*)
+    cp "$ICON_FIXTURE" "$output"
+    ;;
+  *) : >"$output" ;;
+  esac
 fi
+/usr/bin/python3 - "$url" <<'PY'
+import json
+import sys
+print(json.dumps({"http_code": 200, "url_effective": sys.argv[1], "redirect_url": ""}))
+PY
 CURL
 printf '#!/bin/bash\nexit 0\n' >"$test_tmp/bin/gtk-update-icon-cache"
 # A user's mise interpreter must not replace the system standard-library parser.
