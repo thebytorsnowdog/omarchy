@@ -157,7 +157,7 @@ geo_at_cursor() {
 if [[ ${1:-} == "--take-fullscreen" ]]; then
   pgrep -x slurp >/dev/null || exit 0
   ensure_marker_dir
-  touch "$FULLSCREEN_MARKER"
+  touch "$FULLSCREEN_MARKER" || exit 1
   pkill -x slurp
   exit 0
 fi
@@ -165,7 +165,7 @@ fi
 if [[ ${1:-} == "--take-window" ]]; then
   pgrep -x slurp >/dev/null || exit 0
   ensure_marker_dir
-  touch "$WINDOW_MARKER"
+  touch "$WINDOW_MARKER" || exit 1
   pkill -x slurp
   exit 0
 fi

@@ -21,7 +21,14 @@ SH
 
 cat >"$mock_bin/pkill" <<'SH'
 #!/bin/bash
+[[ -z ${PKILL_LOG:-} ]] || printf '%s\n' "$*" >>"$PKILL_LOG"
 exit 0
+SH
+
+cat >"$mock_bin/touch" <<'SH'
+#!/bin/bash
+[[ ${MARKER_WRITE_FAIL:-0} == 0 ]] || exit 1
+exec /usr/bin/touch "$@"
 SH
 
 cat >"$mock_bin/slurp" <<'SH'
@@ -106,3 +113,24 @@ error=$(HOME="$test_tmp/home" XDG_STATE_HOME="$blocked" XDG_RUNTIME_DIR= SLURP_L
 [[ $error == *"Cannot create"* ]] || fail "the unusable fallback state directory is not reported" "actual: $error"
 [[ ! -s $slurp_log ]] || fail "the picker opens slurp although its state directory is unusable"
 pass "an unusable fallback state directory fails before the picker opens"
+
+# The directory can be private and usable while the marker write itself fails
+# (for example, on a full filesystem). Keep slurp open rather than cancel the
+# in-progress selection without handing the requested mode to the picker.
+pkill_log="$test_tmp/pkill-log"
+for mode in fullscreen window; do
+  marker="$state_home/omarchy/omarchy-capture-region-$mode"
+  rm -f "$marker"
+  : >"$pkill_log"
+  if MARKER_WRITE_FAIL=1 PKILL_LOG="$pkill_log" XDG_RUNTIME_DIR= run_region "--take-$mode"; then
+    fail "a failed $mode marker write does not report success"
+  fi
+  [[ ! -e $marker ]] || fail "a failed $mode marker write leaves no marker"
+  [[ ! -s $pkill_log ]] || fail "a failed $mode marker write keeps the picker open"
+  pass "a failed $mode marker write reports failure without dismissing the picker"
+
+  PKILL_LOG="$pkill_log" XDG_RUNTIME_DIR= run_region "--take-$mode"
+  [[ -e $marker ]] || fail "a successful $mode take writes its marker"
+  [[ $(cat "$pkill_log") == "-x slurp" ]] || fail "a successful $mode take dismisses the picker"
+  pass "a successful $mode marker write dismisses the picker normally"
+done
