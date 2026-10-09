@@ -3,6 +3,7 @@
 set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+source "$SHELL_TEST_DIR/fixtures/runtime-smoke/lock-event.sh"
 
 TMPDIR=""
 QS_PID=""
@@ -460,8 +461,7 @@ pass "image selector IPC survives plugin rescan"
 lock_status_after=$(shell_ipc lock status)
 jq -e '.locked | type == "boolean"' <<<"$lock_status_after" >/dev/null || fail_with_log "lock IPC survives plugin rescan"
 lock_event_after=$(jq -r '.lastEvent // empty' <<<"$lock_status_after")
-[[ $lock_event_after != lock-stranded* ]] ||
-  fail_with_log "plugin rescan does not strand the session lock ($lock_event_after)"
+assert_runtime_smoke_lock_event "$lock_event_after"
 # A recreated instance would answer with a fresh, empty marker.
 [[ $(shell_ipc acme-keep get) == "survived" ]] ||
   fail_with_log "plugin rescan keeps the keepLoaded service instance mounted"
