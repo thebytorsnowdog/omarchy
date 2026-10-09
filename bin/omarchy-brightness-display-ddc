@@ -14,19 +14,27 @@ step="${2:-}"
 # keeps the cache out of world-writable /tmp, where another local account could
 # plant a cache file and point brightness writes at a bus of their choosing.
 cache_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}/omarchy-brightness-display-ddc"
+cache_enabled=1
 if [[ -z ${XDG_RUNTIME_DIR:-} ]]; then
-  mkdir -p "$cache_dir" 2>/dev/null && chmod 700 "$cache_dir" 2>/dev/null
+  if ! mkdir -p "$cache_dir" 2>/dev/null || ! chmod 700 "$cache_dir" 2>/dev/null; then
+    # A pre-existing fallback may be readable without being private. Ignore
+    # all cached state if privacy cannot be established, but keep DDC working.
+    cache_enabled=0
+    echo "Cannot secure the DDC cache directory; continuing without cache: $cache_dir" >&2
+  fi
 
   # The state-directory fallback persists across reboots, but I2C bus numbers
   # can come up differently after one, and a stale bus would steer a monitor's
   # brightness at another display. Keep the fallback cache for one boot only.
-  boot_id=""
-  cached_boot=""
-  [[ -r /proc/sys/kernel/random/boot_id ]] && read -r boot_id </proc/sys/kernel/random/boot_id
-  [[ -r $cache_dir/boot-id ]] && read -r cached_boot <"$cache_dir/boot-id"
-  if [[ -n $boot_id && $cached_boot != "$boot_id" ]]; then
-    rm -f "$cache_dir"/*.bus
-    printf '%s\n' "$boot_id" >"$cache_dir/boot-id" 2>/dev/null
+  if (( cache_enabled )); then
+    boot_id=""
+    cached_boot=""
+    [[ -r /proc/sys/kernel/random/boot_id ]] && read -r boot_id </proc/sys/kernel/random/boot_id
+    [[ -r $cache_dir/boot-id ]] && read -r cached_boot <"$cache_dir/boot-id"
+    if [[ -n $boot_id && $cached_boot != "$boot_id" ]]; then
+      rm -f "$cache_dir"/*.bus
+      printf '%s\n' "$boot_id" >"$cache_dir/boot-id" 2>/dev/null
+    fi
   fi
 fi
 cache_name="${monitor//[^[:alnum:]_.-]/_}"
@@ -35,6 +43,7 @@ unavailable_cache_seconds=60
 range_cache_seconds=10
 
 cache_unavailable() {
+  (( cache_enabled )) || return 0
   mkdir -p "$cache_dir" 2>/dev/null || true
   printf 'unavailable %s\n' "$(date +%s)" >"$cache_file" 2>/dev/null || true
 }
@@ -63,7 +72,7 @@ find_bus() {
   local cached_value=""
   local now=0
 
-  if [[ -r $cache_file ]]; then
+  if (( cache_enabled )) && [[ -r $cache_file ]]; then
     read -r bus cached_value <"$cache_file" || true
   fi
 
@@ -73,7 +82,9 @@ find_bus() {
       return 1
     fi
     bus=""
-    rm -f "$cache_file"
+    if (( cache_enabled )); then
+      rm -f "$cache_file"
+    fi
   fi
 
   if [[ -z $bus ]]; then
@@ -82,8 +93,10 @@ find_bus() {
       cache_unavailable
       return 1
     fi
-    mkdir -p "$cache_dir" 2>/dev/null || true
-    printf '%s\n' "$bus" >"$cache_file" 2>/dev/null || true
+    if (( cache_enabled )); then
+      mkdir -p "$cache_dir" 2>/dev/null || true
+      printf '%s\n' "$bus" >"$cache_file" 2>/dev/null || true
+    fi
   fi
 
   printf '%s\n' "$bus"
@@ -110,13 +123,17 @@ read_brightness() {
 
   bus="$(find_bus)" || return 1
   values="$(read_vcp "$bus")" || {
-    rm -f "$cache_file"
+    if (( cache_enabled )); then
+      rm -f "$cache_file"
+    fi
     return 1
   }
 
-  now=$(date +%s)
-  mkdir -p "$cache_dir" 2>/dev/null || true
-  printf '%s %s %s\n' "$bus" "${values##* }" "$now" >"$cache_file" 2>/dev/null || true
+  if (( cache_enabled )); then
+    now=$(date +%s)
+    mkdir -p "$cache_dir" 2>/dev/null || true
+    printf '%s %s %s\n' "$bus" "${values##* }" "$now" >"$cache_file" 2>/dev/null || true
+  fi
   printf '%s %s\n' "$bus" "$values"
 }
 
@@ -137,7 +154,7 @@ fi
 if [[ $step =~ ^([0-9]+)%$ ]]; then
   target="${BASH_REMATCH[1]}"
   range_cache_fresh=0
-  if [[ -r $cache_file ]]; then
+  if (( cache_enabled )) && [[ -r $cache_file ]]; then
     read -r bus maximum range_cached_at <"$cache_file" || true
   fi
 
@@ -180,7 +197,9 @@ fi
 (( raw_target = (target * maximum + 50) / 100 ))
 
 if ! ddcutil --bus "$bus" --skip-ddc-checks --noverify setvcp 10 "$raw_target" >/dev/null 2>&1; then
-  rm -f "$cache_file"
+  if (( cache_enabled )); then
+    rm -f "$cache_file"
+  fi
   exit 1
 fi
 
