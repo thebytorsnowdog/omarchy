@@ -1,0 +1,17 @@
+{
+  "number": 15397,
+  "title": "bar: an empty JSON text hides the module instead of printing its JSON (#15346)",
+  "body": "Closes #15346.\n\nA custom `\"type\": \"command\"` module whose script prints `{\"text\":\"\",\"class\":\"ok\"}` showed that JSON on the bar: `CustomCommandModule.update()` did `outputText = data.text || String(raw || \"\").trim()`, and an empty string is falsy, so the raw fallback won even though the JSON had parsed.\n\nThe choice moves into `shell/plugins/bar/BarModel.js` as `customCommandLabel(raw, data)` \u2014 `Bar.qml` already imports that module, so there is no new import \u2014 where the existing node harness can reach it. The parsed `text` is the label whenever the JSON has one, empty included; only output with no `text` field, or no JSON at all, shows the raw output. `{\"class\":\"ok\"}` and a JSON scalar such as `123` keep behaving as before.\n\n## Testing\n\n`bash test/shell.d/bar-custom-command-output-test.sh` runs eight assertions through `run_node_test`: the empty text, a real text, plain (non-JSON) output, empty output, the three unchanged cases, and that `Bar.qml` calls the shared label so the rule cannot drift back into the QML.\n\nWith the old `||` restored the first assertion fails with `expected: ` / `actual:   {\"text\":\"\",\"class\":\"ok\"}`, so it is a guard rather than a restatement of the change.\n",
+  "state": "open",
+  "merged": false,
+  "html_url": "https://github.com/omacom/omarchy/pull/15397",
+  "updated_at": "2026-10-14T03:19:31Z",
+  "base": {
+    "ref": "quattro",
+    "sha": "9f49906d22419c45931b92a8816ec852e232c6d6"
+  },
+  "head": {
+    "ref": "bar-custom-command-empty-text",
+    "sha": "989ef27dd510fa15064d1a1606e1d59831068e70"
+  }
+}

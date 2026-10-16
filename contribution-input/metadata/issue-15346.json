@@ -1,0 +1,8 @@
+{
+  "number": 15346,
+  "title": "Bar: custom command widget shows raw JSON when output has an empty \"text\"",
+  "body": "**System:** Omarchy 4.0.4-1, NVIDIA RTX 3090, Hyprland (Lua config)\n\n**What happens**\nA custom `\"type\": \"command\"` bar widget whose script prints Waybar-style JSON with an empty text field, e.g.\n\n```json\n{\"text\":\"\",\"class\":\"ok\"}\n```\n\nshows that whole JSON line as its label in the bar instead of hiding or showing nothing.\n\n**Expected**\nAn empty `\"text\"` should render an empty (hidden) widget, the same as Waybar. The README says the command \"may print plain text or Waybar-style JSON\", and an empty text is the usual Waybar way to hide a module.\n\n**Steps to reproduce**\n1. Add to `~/.config/omarchy/shell.json` under `bar.layout.right`:\n   `{ \"id\": \"test-empty\", \"type\": \"command\", \"exec\": \"echo '{\\\"text\\\":\\\"\\\",\\\"class\\\":\\\"ok\\\"}'\", \"interval\": 5 }`\n2. The bar shows `{\"text\":\"\",\"class\":\"ok\"}`.\n\n**Cause**\n`CustomCommandModule.update()` in `shell/plugins/bar/Bar.qml`:\n\n```js\noutputText = data.text || String(raw || \"\").trim()\n```\n\nAn empty string is falsy, so the fallback to the raw output kicks in even though the JSON parsed fine. A possible fix is to fall back only when the output wasn't JSON, e.g. check `data.text !== undefined` (or whether `Util.parseModuleJson` succeeded) before using `raw`.\n\n**Workaround**\nPrint nothing at all instead of JSON with an empty text.\n",
+  "state": "open",
+  "html_url": "https://github.com/omacom/omarchy/issues/15346",
+  "updated_at": "2026-10-13T19:50:38Z"
+}

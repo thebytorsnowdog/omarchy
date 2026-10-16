@@ -1,0 +1,17 @@
+{
+  "number": 15526,
+  "title": "Add 1Password to Remove > Services",
+  "body": "Fixes #15485.\n\nInstall > Services offers 1Password and `bin/omarchy-remove-service-1password` ships, but Remove > Services never got the matching row: d7adaee0 added both scripts with only the install entry, and ee97329a built Remove > Services from Dropbox and Tailscale alone. Removal has only been reachable by typing the script name.\n\n## Change\n\n- `remove.service.1password` in `default/omarchy/omarchy-menu.jsonc`, first in the section as in Install > Services, shown when `omarchy-pkg-present 1password`, running `omarchy-remove-service-1password` in the floating terminal like its neighbours.\n- The English menu catalog (`default/i18n/en/menu.json`) carries the row, which is the English-only side `I18N_STRUCTURAL=1` expects from a PR; the label is the product name, as for the install row.\n- `test/shell.d/menu-service-remove-test.sh`: every `install.service.<name>` row whose `bin/omarchy-remove-service-<name>` exists must have a `remove.service.<name>` row that runs that script. It fails on `quattro` with `[\"1password\"]` and passes with this change. Sunshine is not flagged because its install row does not exist yet either (`plans/remote.md`).\n\nThe issue also sketches a wider check (every `omarchy-install-*` / `omarchy-remove-*` script is either in the menu or `omarchy:hidden=true`). On `quattro` that would need markers on nine more scripts, including the two Sunshine ones that are planned for the menu, so I kept to the install/remove pairing this bug is an instance of; happy to widen it if that is wanted.\n\n## Tests\n\n`menu-service-remove-test.sh`, `menu-test.sh`, `menu-guards-test.sh` and `I18N_STRUCTURAL=1 i18n-test.sh` pass. Not exercised in a running shell: the row has the same shape as the Tailscale one next to it.\n\nDeveloped with AI assistance (Claude Code); reviewed and tested locally.\n",
+  "state": "open",
+  "merged": false,
+  "html_url": "https://github.com/omacom/omarchy/pull/15526",
+  "updated_at": "2026-10-15T06:45:44Z",
+  "base": {
+    "ref": "quattro",
+    "sha": "246f33a2fef66411c990860d88e0823ae83987fc"
+  },
+  "head": {
+    "ref": "menu-remove-service-1password",
+    "sha": "341903f5c0e2a449a03cfac75aabc376e140c727"
+  }
+}

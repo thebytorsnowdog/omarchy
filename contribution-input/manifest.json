@@ -1,0 +1,64 @@
+{
+  "captured_at": "2026-10-16T10:50:31.752373+00:00",
+  "upstream": "https://github.com/omacom/omarchy",
+  "source_commit": "51bfd1dbaa1b5f790e19623faf2745945d40c796",
+  "source_tree": "a9e3932a9442c33bf55026c66406cda3c14dae5c",
+  "snapshots": {
+    "current": {
+      "commit": "51bfd1dbaa1b5f790e19623faf2745945d40c796",
+      "tree": "a9e3932a9442c33bf55026c66406cda3c14dae5c",
+      "patch": "current.patch.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "verified_tree": "a9e3932a9442c33bf55026c66406cda3c14dae5c",
+      "bytes": 20
+    },
+    "pr-15526": {
+      "commit": "341903f5c0e2a449a03cfac75aabc376e140c727",
+      "tree": "0e9cc785d9390c715502a7a73a7da071e8e3587c",
+      "patch": "pr-15526.patch.gz",
+      "sha256": "a67be61fa6d290ce8e8da1e0ebcd3e016a816481e2aeb44c5cfb46df9774ce7e",
+      "verified_tree": "0e9cc785d9390c715502a7a73a7da071e8e3587c",
+      "bytes": 4345
+    },
+    "base-15526": {
+      "commit": "246f33a2fef66411c990860d88e0823ae83987fc",
+      "tree": "d30ce6903bc1d437aaf66323b8721ce984818955",
+      "patch": "base-15526.patch.gz",
+      "sha256": "b72925c315e3a1c527a9e0a5b41b69216244695fe79e4d20fba5ae941b20ca4f",
+      "verified_tree": "d30ce6903bc1d437aaf66323b8721ce984818955",
+      "bytes": 2934
+    },
+    "pr-15358": {
+      "commit": "5fd648ad6f331e2eb27d8d3b3964ea6f35e379da",
+      "tree": "b3352f903f21b12c02ea83903433183caf731935",
+      "patch": "pr-15358.patch.gz",
+      "sha256": "1054a17a1d0f87c9a606a71b83006ca3437d0dd94923db3f2ea11326301849fa",
+      "verified_tree": "b3352f903f21b12c02ea83903433183caf731935",
+      "bytes": 7587169
+    },
+    "base-15358": {
+      "commit": "492b8837deea69663c7a5418871f07ed075a9686",
+      "tree": "a7ac5669b9f731c6cc1dd39dcbcf58e598c281ec",
+      "patch": "base-15358.patch.gz",
+      "sha256": "7880652ef97b33e22bc40ccc9e6772ff288902f6b25842e37584637481edaa49",
+      "verified_tree": "a7ac5669b9f731c6cc1dd39dcbcf58e598c281ec",
+      "bytes": 7586316
+    },
+    "pr-15397": {
+      "commit": "989ef27dd510fa15064d1a1606e1d59831068e70",
+      "tree": "df6678c5a4afcc04522e1b6793a4f709289db83d",
+      "patch": "pr-15397.patch.gz",
+      "sha256": "1551f7ff635c13023094f02ef6f9e2dbd6adbe4c907eae34306c2aeff891bc6a",
+      "verified_tree": "df6678c5a4afcc04522e1b6793a4f709289db83d",
+      "bytes": 6730143
+    },
+    "base-15397": {
+      "commit": "9099461397fcab8fd260d89cd54938ef21be7e3f",
+      "tree": "59bf1df93205b6d23c46db2402fdfa4b47638608",
+      "patch": "base-15397.patch.gz",
+      "sha256": "36f847c454940ec94aee36576ea73ddc392fce31569a7873f9e663f309e179da",
+      "verified_tree": "59bf1df93205b6d23c46db2402fdfa4b47638608",
+      "bytes": 6729091
+    }
+  }
+}

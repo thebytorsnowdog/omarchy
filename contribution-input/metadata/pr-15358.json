@@ -1,0 +1,17 @@
+{
+  "number": 15358,
+  "title": "Stop custom command widgets showing raw JSON for an empty text",
+  "body": "Fixes #15346\n\n**Cause:** `CustomCommandModule.update()` used `data.text || raw`, so a valid Waybar-style line with an empty `\"text\"` fell back to the raw output and the bar painted the whole JSON string. A JSON line with no `text` key did the same.\n\n**Change:** `Util.parseModuleJson()` now only treats a JSON *object* as JSON (a plain number or quoted string stays plain text) and marks plain output with `plain: true`. The custom command widget uses the parsed JSON as-is, so an empty or missing `text` leaves the widget empty, and only plain output keeps the raw line. `BarIndicator`/`Reminder` read `count` and `tooltip` and are unaffected.\n\n**Testing:**\n- `bash test/shell.d/bar-test.sh`: passes (93 checks), now including source assertions for the new fallback rule and the plain-output marker.\n- `bash test/shell.d/qml-text-format-test.sh`: passes.\n- `bash test/shell.d/runtime-smoke-test.sh`: fails at \"each widget registers its IPC handler once per screen (saw 4 for 2 screen(s))\" identically on a clean `origin/quattro` worktree, so it is unrelated to this change.\n- Not tested: rendering the widget with a stubbed process; the checks above are source assertions plus the shell loading the bar.\n",
+  "state": "open",
+  "merged": false,
+  "html_url": "https://github.com/omacom/omarchy/pull/15358",
+  "updated_at": "2026-10-13T21:31:51Z",
+  "base": {
+    "ref": "quattro",
+    "sha": "492b8837deea69663c7a5418871f07ed075a9686"
+  },
+  "head": {
+    "ref": "fix/custom-command-empty-text",
+    "sha": "5fd648ad6f331e2eb27d8d3b3964ea6f35e379da"
+  }
+}
