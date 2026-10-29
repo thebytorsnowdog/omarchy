@@ -57,9 +57,13 @@ if [[ -n $KEY && -n $GITHUB_USER ]]; then
   exit 2
 fi
 
-setup_sshd() {
-  echo "Installing and starting the OpenSSH server..."
+install_sshd() {
+  echo "Installing the OpenSSH server..."
   omarchy-pkg-add openssh
+}
+
+start_sshd() {
+  echo "Starting the OpenSSH server..."
   sudo systemctl enable --now sshd.service
 }
 
@@ -182,15 +186,15 @@ CONF
     return 1
   fi
 
-  # Reload rather than restart so an administrator already connected keeps
-  # their session.
-  sudo systemctl reload sshd.service
+  # A daemon that is already running must pick up the file before the
+  # firewall opens. A fresh install starts afterwards and reads this config
+  # on the way up. Reload rather than restart so an existing session survives.
+  if sudo systemctl is-active --quiet sshd.service; then
+    sudo systemctl reload sshd.service
+  fi
 }
 
 echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
-
-setup_sshd
-open_firewall
 
 echo
 if [[ -n $KEY ]]; then
@@ -205,7 +209,13 @@ else
   esac
 fi
 
+# Authorize a key before installing or starting sshd, and open the port only
+# after password authentication is off. The prompts above used to run while
+# the server was already reachable with passwords still accepted.
+install_sshd
 disable_password_auth
+start_sshd
+open_firewall
 
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
 echo "Password logins are off; this machine now accepts authorized keys only."

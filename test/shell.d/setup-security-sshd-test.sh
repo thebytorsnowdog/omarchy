@@ -16,11 +16,26 @@ printf 'pkg %s\n' "$*" >>"${CALL_LOG:?}"
 STUB
 cat >"$stub_bin/omarchy-cmd-missing" <<'STUB'
 #!/bin/bash
+if [[ ${UFW_PRESENT:-0} == 1 && $1 == ufw ]]; then
+  exit 1
+fi
 exit 0
+STUB
+cat >"$stub_bin/ufw" <<'STUB'
+#!/bin/bash
+printf 'ufw %s\n' "$*" >>"${CALL_LOG:?}"
 STUB
 cat >"$stub_bin/systemctl" <<'STUB'
 #!/bin/bash
 printf 'systemctl %s\n' "$*" >>"${CALL_LOG:?}"
+if [[ $1 == is-active ]]; then
+  [[ ${SSHD_ALREADY_RUNNING:-0} == 1 ]]
+  exit
+fi
+if [[ $1 == enable && ${3:-} == sshd.service ]]; then
+  [[ -s ${HOME:?}/.ssh/authorized_keys ]] || exit 1
+  [[ -s ${TEST_ROOT:?}/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] || exit 1
+fi
 STUB
 cat >"$stub_bin/sshd" <<'STUB'
 #!/bin/bash
@@ -76,6 +91,9 @@ run_setup() {
     SSHD_SYNTAX_VALID="${SSHD_SYNTAX_VALID:-1}" \
     SSHD_PASSWORD_AUTH="${SSHD_PASSWORD_AUTH:-no}" \
     SSHD_KBD_AUTH="${SSHD_KBD_AUTH:-no}" \
+    SSHD_DUMP_LOWERCASE="${SSHD_DUMP_LOWERCASE:-0}" \
+    SSHD_ALREADY_RUNNING="${SSHD_ALREADY_RUNNING:-0}" \
+    UFW_PRESENT="${UFW_PRESENT:-0}" \
     PATH="$stub_bin:$PATH" \
     bash "$ROOT/bin/omarchy-setup-security-sshd" --key="$public_key"
 }
@@ -84,9 +102,33 @@ output=$(run_setup success)
 config="$test_dir/success/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf"
 grep -qxF "PasswordAuthentication no" "$config" || fail "SSH setup disables password authentication"
 grep -qxF "KbdInteractiveAuthentication no" "$config" || fail "SSH setup disables keyboard-interactive authentication"
-grep -qxF "systemctl reload sshd.service" "$test_dir/success.calls" || fail "SSH setup reloads the validated config"
+! grep -qF "systemctl reload sshd.service" "$test_dir/success.calls" ||
+  fail "SSH setup does not reload a daemon that is not running yet" "$(cat "$test_dir/success.calls")"
+grep -qxF "systemctl enable --now sshd.service" "$test_dir/success.calls" ||
+  fail "SSH setup starts sshd after a key is authorized"
 grep -q "Password logins are off" <<<"$output" || fail "SSH setup reports hardening after it succeeds"
 pass "SSH setup authorizes a key and disables password logins"
+
+output=$(SSHD_ALREADY_RUNNING=1 run_setup already-running)
+awk '
+  /systemctl is-active --quiet sshd.service/ { active = NR }
+  /systemctl reload sshd.service/ { reload = NR }
+  /systemctl enable --now sshd.service/ { enable = NR }
+  END { exit !(active && reload && enable && active < reload && reload < enable) }
+' "$test_dir/already-running.calls" ||
+  fail "SSH setup reloads a running sshd before enabling it" "$(cat "$test_dir/already-running.calls")"
+grep -q "Password logins are off" <<<"$output" || fail "SSH setup reports hardening when sshd was already running"
+pass "SSH setup reloads an already running sshd after the key is authorized"
+
+output=$(UFW_PRESENT=1 run_setup firewall)
+enable_line=$(grep -n 'systemctl enable --now sshd.service' "$test_dir/firewall.calls" | head -1 | cut -d: -f1)
+ufw_line=$(grep -n 'ufw limit 22/tcp' "$test_dir/firewall.calls" | head -1 | cut -d: -f1)
+[[ -n $enable_line && -n $ufw_line ]] ||
+  fail "SSH setup starts sshd and then opens the firewall" "$(cat "$test_dir/firewall.calls")"
+(( enable_line < ufw_line )) ||
+  fail "SSH setup opens the port only after sshd is started with passwords off" "$(cat "$test_dir/firewall.calls")"
+grep -q "Password logins are off" <<<"$output" || fail "SSH setup still reports hardening when the firewall is opened"
+pass "SSH setup opens the SSH port after password logins are off"
 
 output=$(SSHD_DUMP_LOWERCASE=1 run_setup success-legacy)
 config="$test_dir/success-legacy/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf"
@@ -101,6 +143,8 @@ fi
   fail "SSH setup removes an ineffective hardening config"
 ! grep -qF "systemctl reload sshd.service" "$test_dir/ineffective.calls" ||
   fail "SSH setup must not reload ineffective hardening"
+! grep -qF "systemctl enable --now sshd.service" "$test_dir/ineffective.calls" ||
+  fail "SSH setup must not start sshd when password authentication remains effective"
 ! grep -q "Password logins are off" "$test_dir/ineffective.output" ||
   fail "SSH setup must not claim ineffective hardening succeeded"
 pass "SSH setup verifies the effective daemon settings"
@@ -112,6 +156,8 @@ fi
   fail "SSH setup removes a rejected hardening config"
 ! grep -qF "systemctl reload sshd.service" "$test_dir/invalid.calls" ||
   fail "SSH setup must not reload a rejected config"
+! grep -qF "systemctl enable --now sshd.service" "$test_dir/invalid.calls" ||
+  fail "SSH setup must not start sshd when sshd rejects its config"
 ! grep -q "Password logins are off" "$test_dir/invalid.output" ||
   fail "SSH setup must not claim rejected hardening succeeded"
 pass "SSH setup fails safely when sshd rejects the config"
