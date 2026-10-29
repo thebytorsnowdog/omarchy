@@ -42,6 +42,10 @@ migrations_line=$(grep -n '^run_post_upgrade_migrations$' "$upgrade_to_quattro" 
   fail "final package upgrade and migration calls exist"
 (( final_upgrade_line < migrations_line )) ||
   fail "Omarchy migrations run after the final package upgrade"
+trustall_line=$(grep -n '^drop_transitional_omarchy_trustall$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $trustall_line ]] || fail "upgrade drops the transitional TrustAll override"
+(( migrations_line < trustall_line )) ||
+  fail "TrustAll override is removed after migrations, including on a re-run"
 pass "Omarchy 4 upgrade applies packaged migrations"
 
 if grep -F 'skip-first-run-update-notification' "$upgrade_to_quattro" >/dev/null; then
