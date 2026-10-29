@@ -17,6 +17,30 @@ USAGE
   exit 1
 fi
 
+# The path is appended to both ~/.config and $OMARCHY_PATH/config and only
+# checked with [[ -e ]]. A ".." component resolves and can copy a file that
+# exists outside the shipped config tree onto a path outside ~/.config.
+reject_escaped_config_path() {
+  local path="$1" part
+
+  case $path in
+    /* | "~"*)
+      echo "Config path must stay inside ~/.config: $path" >&2
+      exit 1
+      ;;
+  esac
+
+  local IFS=/
+  for part in $path; do
+    if [[ -z $part || $part == "." || $part == ".." ]]; then
+      echo "Config path must stay inside ~/.config: $path" >&2
+      exit 1
+    fi
+  done
+}
+
+reject_escaped_config_path "$config_file"
+
 user_config_file="${HOME}/.config/$config_file"
 default_config_file="$OMARCHY_PATH/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
