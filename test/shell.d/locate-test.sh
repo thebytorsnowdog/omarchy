@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix="omarchy-locate-") as scratch:
   fake_bin.mkdir()
   stubs = {
     "updatedb": 'printf "%s\\n" "$@" >"$TEST_CALLS"',
-    "sudo": 'exec "$@"',
+    "sudo": 'if [[ ${1:-} == -k ]]; then exit 0; fi\nexec "$@"',
     "fzf": 'cat >/dev/null\nprintf "%s\\n" test-package',
     "yay": 'if [[ ${1:-} == "-Slqa" ]]; then printf "%s\\n" test-package; fi',
     "omarchy-sudo-keepalive": ':',
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix="omarchy-locate-") as scratch:
     path.write_text("#!/bin/bash\n" + body + "\n")
     path.chmod(0o755)
   calls = scratch / "updatedb-arguments"
-  env = dict(os.environ, PATH=str(fake_bin) + ":" + os.environ["PATH"], TEST_CALLS=str(calls))
+  env = dict(os.environ, PATH=str(fake_bin) + ":" + os.environ["PATH"], TEST_CALLS=str(calls), OMARCHY_PATH=str(root))
   for relative in ("install/post-install/localdb.sh", "bin/omarchy-pkg-aur-install"):
     subprocess.run(["bash", "-euo", "pipefail", str(root / relative)], env=env, check=True)
     check(calls.read_text().splitlines() == options,
