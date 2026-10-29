@@ -436,6 +436,28 @@ configure_pacman_channel() {
   rm -f "$tmp"
 }
 
+# configure_pacman_channel writes Optional TrustAll so the packaging key can be
+# installed before signatures are required. Migration 1787589206 removes that
+# override once, then will not run again. A later re-run of this script writes
+# TrustAll back and would otherwise leave unsigned Omarchy packages accepted.
+drop_transitional_omarchy_trustall() {
+  local override='SigLevel = Optional TrustAll'
+
+  [[ -f /etc/pacman.conf ]] || return 0
+  if ! sed -n '/^\[omarchy\]/,/^\[/p' /etc/pacman.conf | grep -qxF "$override"; then
+    return 0
+  fi
+
+  if omarchy-pkg-missing omarchy-keyring ||
+    ! as_root pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 &>/dev/null; then
+    warn "Leaving 'SigLevel = Optional TrustAll' on the Omarchy repository because its packaging key is not installed."
+    return 0
+  fi
+
+  log "Requiring signatures for Omarchy repository packages"
+  as_root sed -i "/^\[omarchy\]/,/^\[/{/^$override$/d}" /etc/pacman.conf
+}
+
 install_keyrings() {
   log "Refreshing package databases and keyrings"
 
@@ -2382,6 +2404,7 @@ run_final_system_package_upgrade
 # This also retires the stock ~/.local/share/fonts/omarchy.ttf missed by the
 # former ~/.config retirement entry, through migration 1788848726.
 run_post_upgrade_migrations
+drop_transitional_omarchy_trustall
 run_post_upgrade_update_steps
 refresh_current_theme_after_upgrade
 # Do not force-reload Hyprland in the live upgraded session. The legacy
