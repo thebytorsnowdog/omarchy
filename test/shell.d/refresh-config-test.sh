@@ -38,3 +38,22 @@ grep -Fq 'Not a shipped user config: hypr/missing.lua' "$tmpdir/err" ||
   fail "refresh-config reports missing shipped config"
 
 pass "refresh-config validates against OMARCHY_PATH/config"
+
+mkdir -p "$omarchy_path/outside" "$home/outside"
+printf 'shipped\n' >"$omarchy_path/outside/note"
+printf 'keep\n' >"$home/outside/note"
+
+for escaped in ../outside/note ../../outside/note /etc/passwd ./hypr/bindings.lua hypr//bindings.lua; do
+  if HOME="$home" OMARCHY_PATH="$omarchy_path" "$ROOT/bin/omarchy-refresh-config" "$escaped" >"$tmpdir/out" 2>"$tmpdir/err"; then
+    fail "refresh-config rejects escaped path $escaped"
+  fi
+  grep -Fq "Config path must stay inside ~/.config: $escaped" "$tmpdir/err" ||
+    fail "refresh-config names the rejected path $escaped" "$(cat "$tmpdir/err")"
+done
+
+cmp -s "$home/outside/note" <(printf 'keep\n') ||
+  fail "refresh-config leaves a file outside ~/.config unchanged"
+[[ -z $(find "$home/outside" -name 'note.bak.*' -print -quit) ]] ||
+  fail "refresh-config does not back up a file outside ~/.config"
+
+pass "refresh-config rejects paths that leave ~/.config"
