@@ -5,8 +5,13 @@
 # omarchy:hidden=true
 
 LOG_TYPE="${1:-install}"
-TEMP_LOG="/tmp/upload-log.txt"
-SYSTEM_INFO="/tmp/system-info.txt"
+# Fixed /tmp names are created mode 0644 under a normal umask. Journal and
+# install logs copied there are then readable by any local account.
+umask 077
+work_dir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/omarchy-upload-log.XXXXXX") || exit 1
+trap 'rm -rf -- "$work_dir"' EXIT
+TEMP_LOG="$work_dir/upload-log.txt"
+SYSTEM_INFO="$work_dir/system-info.txt"
 
 # Get system information if fastfetch is available
 if omarchy-cmd-present fastfetch; then
