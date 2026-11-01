@@ -84,7 +84,7 @@ ShellRoot {
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
     var futureAuth = manifest("omarchy.future-auth", ["service"], { service: "Service.qml" })
-    futureAuth.omarchy = { capabilities: ["authentication"] }
+    futureAuth.omarchy = { capabilities: ["authentication", "theme"] }
     scan += block("firstparty", "/first/future-auth", futureAuth)
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
@@ -144,9 +144,33 @@ ShellRoot {
 
     root.assertTrue(registry.installedPlugins["omarchy.first-widget"].__isFirstParty === true, "first-party manifests are stamped")
     root.assertTrue(registry.installedPlugins["third.panel"].__isFirstParty === false, "third-party manifests are stamped")
-    root.assertDeepEqual(registry.installedPlugins["omarchy.future-auth"].__hostCapabilities, ["authentication"], "trusted manifests stamp authentication capability")
-    root.assertDeepEqual(registry.installedPlugins["local.future-auth"].__hostCapabilities, ["authentication"], "clones inherit trusted host capabilities")
+    root.assertDeepEqual(registry.installedPlugins["omarchy.future-auth"].__hostCapabilities, ["authentication", "theme"], "trusted manifests stamp authentication capability")
+    root.assertDeepEqual(registry.installedPlugins["local.future-auth"].__hostCapabilities, ["theme"], "clones keep ordinary capabilities and drop authentication")
     root.assertDeepEqual(registry.installedPlugins["third.spoofed-auth"].__hostCapabilities, [], "third-party manifests cannot self-grant host capabilities")
+    registry.setEnabled("local.future-auth", true)
+    root.assertTrue(registry.isEnabled("omarchy.future-auth"), "enabling an authentication clone leaves the packaged service enabled")
+    root.assertTrue(root.config.disabledPlugins === undefined, "enabling an authentication clone does not disable the packaged service")
+    root.assertTrue(registry.isEnabled("local.future-auth"), "an authentication clone can still be enabled as an ordinary plugin")
+    registry.setEnabled("local.future-auth", false)
+    root.assertDeepEqual(root.config.plugins, [], "disabling an authentication clone removes only that plugin")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: [{ id: "local.future-auth" }],
+      disabledPlugins: ["omarchy.future-auth", "omarchy.hybrid"]
+    }
+    registry.restorePackagedAuthentication()
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.hybrid"], "a scan turns the packaged authentication service back on")
+    root.assertTrue(registry.isEnabled("omarchy.future-auth"), "the packaged authentication service is enabled again")
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: [],
+      disabledPlugins: ["omarchy.future-auth"]
+    }
+    registry.restorePackagedAuthentication()
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.future-auth"], "an authentication service the user switched off stays off")
     root.assertEqual(registry.installedPlugins["omarchy.grouped-panel"].__sourceDir, "/first/panels/grouped", "grouped plugin source paths are preserved")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file:///third/panel/Panel.qml", "entryPointUrl resolves plugin-relative paths")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.widget"], "barWidget"), "file:///third/widget/Widget.qml", "entryPointUrl resolves bar widget paths")

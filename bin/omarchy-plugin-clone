@@ -87,7 +87,8 @@ Copies a built-in plugin into ~/.config/omarchy/plugins/<username>.<id>/ so you
 can edit it freely. The clone keeps all of the source plugin's files and kinds
 and uses "My <name>" as its display name, then replaces the built-in with the
 clone. The username prefix keeps the id yours, so a shared clone does not
-collide with anyone else's. --edit opens the clone in \$EDITOR afterwards.
+collide with anyone else's. The lock screen and polkit agent cannot be cloned.
+--edit opens the clone in \$EDITOR afterwards.
 
 USAGE
 }
@@ -127,6 +128,14 @@ source_info=$(omarchy-plugin-catalog | jq -r --arg id "$source_id" '
   ')
 [[ -n $source_info ]] || fail "unknown built-in plugin: $source_id"
 IFS=$'\t' read -r source_dir source_manifest source_name <<<"$source_info"
+
+# The lock screen and polkit agent are the dialogs that read the account
+# password. A clone would replace the packaged copy, so a later edit or a
+# shared checkout would be the thing the user types into. Leave those two
+# on the packaged files.
+if jq -e '(.omarchy.capabilities // []) | index("authentication") != null' "$source_manifest" >/dev/null; then
+  fail "cannot clone $source_id; the password dialog stays the packaged copy"
+fi
 
 new_id="${USER:-$(id -un)}.${source_id#omarchy.}"
 display_name="My $source_name"

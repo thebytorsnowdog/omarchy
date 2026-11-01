@@ -101,6 +101,52 @@ QtObject {
     return out
   }
 
+  // Authentication is the password and polkit UI. A third-party manifest can
+  // set clonedFrom to omarchy.lock or omarchy.polkit, but that must not make
+  // its QML the dialog the user types a password into. Ordinary capabilities
+  // still follow the built-in a clone names.
+  function capabilitiesForThirdParty(capabilities) {
+    var out = []
+    var source = Array.isArray(capabilities) ? capabilities : []
+    for (var i = 0; i < source.length; i++) {
+      if (source[i] !== "authentication") out.push(source[i])
+    }
+    return out
+  }
+
+  function authenticationCloneInstalled(sourceId) {
+    for (var candidate in installedPlugins) {
+      var manifest = installedPlugins[candidate]
+      if (!manifest || manifest.__isFirstParty) continue
+      var metadata = Util.isPlainObject(manifest.omarchy) ? manifest.omarchy : null
+      if (metadata && Util.canonicalWidgetId(String(metadata.clonedFrom || "")) === sourceId
+          && isEnabled(candidate)) return true
+    }
+    return false
+  }
+
+  // A clone used to disable the packaged lock screen or polkit agent. Put that
+  // service back the next time plugins are scanned. A user who turned the
+  // service off with no clone claiming it is left alone.
+  function restorePackagedAuthentication() {
+    if (!shellConfigMutator || !shellConfigProvider) return
+    var config = shellConfigProvider() || {}
+    if (!Array.isArray(config.disabledPlugins) || config.disabledPlugins.length === 0) return
+    var restore = []
+    for (var i = 0; i < config.disabledPlugins.length; i++) {
+      var id = Util.canonicalWidgetId(String(config.disabledPlugins[i] || ""))
+      var manifest = installedPlugins[id]
+      if (!manifest || !Array.isArray(manifest.__hostCapabilities)) continue
+      if (manifest.__hostCapabilities.indexOf("authentication") === -1) continue
+      if (!authenticationCloneInstalled(id)) continue
+      restore.push(id)
+    }
+    if (restore.length === 0) return
+    shellConfigMutator(function(next) {
+      for (var r = 0; r < restore.length; r++) removeDisabled(next, restore[r])
+    })
+  }
+
   function stampHostCapabilities(firstParty, thirdParty) {
     for (var firstPartyId in firstParty)
       firstParty[firstPartyId].__hostCapabilities = trustedCapabilities(firstParty[firstPartyId])
@@ -111,7 +157,7 @@ QtObject {
       var clonedFrom = metadata ? String(metadata.clonedFrom || "") : ""
       var source = clonedFrom ? firstParty[clonedFrom] : null
       manifest.__hostCapabilities = source && Array.isArray(source.__hostCapabilities)
-        ? source.__hostCapabilities.slice() : []
+        ? capabilitiesForThirdParty(source.__hostCapabilities) : []
     }
   }
 
@@ -545,7 +591,14 @@ QtObject {
         if (isBarWidget && !insertedWithPlacement && placement && Object.keys(placement).length)
           moveBarEntry(config, key, placement)
 
-        if (clonedFrom && hasNonWidgetKind && !isDisabled(config, clonedFrom)) {
+        // Replacing omarchy.lock or omarchy.polkit would leave the clone as the
+        // only password dialog. Those built-ins stay enabled.
+        var sourceCapabilities = []
+        if (clonedFrom && installedPlugins[clonedFrom]) {
+          sourceCapabilities = installedPlugins[clonedFrom].__hostCapabilities || []
+        }
+        if (clonedFrom && hasNonWidgetKind && !isDisabled(config, clonedFrom)
+            && sourceCapabilities.indexOf("authentication") === -1) {
           addDisabled(config, clonedFrom)
           setCloneShouldRestoreSource(config, key, true)
         }
@@ -638,6 +691,7 @@ QtObject {
     installedPlugins = merged
     registryRevision++
     scanning = false
+    restorePackagedAuthentication()
     pluginsChanged()
     scanFinished()
   }
