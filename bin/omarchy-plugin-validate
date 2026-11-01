@@ -52,6 +52,28 @@ ID=$(jq -r '.id // ""' "$MANIFEST")
 [[ $ID != *".."* ]] || fail "invalid plugin id '$ID'"
 [[ $ID != omarchy.* ]] || fail "plugin id '$ID' uses the reserved omarchy.* namespace"
 
+# clonedFrom is how a local copy keeps a built-in's id for shortcuts. Pointing
+# it at the lock screen or the polkit agent is how a git plugin would replace
+# the password dialog. Those services stay the packaged copy. An ordinary
+# built-in, such as the clock, can still be named.
+cloned_from=$(jq -r '.omarchy.clonedFrom // empty' "$MANIFEST")
+if [[ -n $cloned_from ]]; then
+  if [[ ! -d ${OMARCHY_PATH:-}/shell/plugins ]]; then
+    fail "cannot check clonedFrom '$cloned_from' without the Omarchy plugin tree"
+  fi
+  source_manifest=""
+  while IFS= read -r candidate; do
+    candidate_id=$(jq -r '.id // empty' "$candidate")
+    if [[ $candidate_id == "$cloned_from" ]]; then
+      source_manifest=$candidate
+      break
+    fi
+  done < <(find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) | sort)
+  if [[ -n $source_manifest ]] && jq -e '(.omarchy.capabilities // []) | index("authentication") != null' "$source_manifest" >/dev/null; then
+    fail "clonedFrom '$cloned_from' names an authentication plugin; that service stays the packaged copy"
+  fi
+fi
+
 # kinds must be a non-empty array.
 jq -e '(.kinds | type) == "array" and (.kinds | length) > 0' "$MANIFEST" >/dev/null 2>&1 \
   || fail "'kinds' must be a non-empty array"

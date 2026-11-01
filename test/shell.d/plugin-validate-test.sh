@@ -115,3 +115,28 @@ output=$(validate "$dir") && fail "validate refuses an entry point file that is 
 grep -qF "entry point file not found" <<<"$output" \
   || fail "validate reports a missing file as a missing file" "$output"
 pass "validate refuses an entry point file that is not there"
+
+# A git plugin can set clonedFrom. Naming the lock screen or polkit agent
+# would replace the password dialog, so that claim is refused. Naming the
+# clock is the ordinary clone case and stays valid.
+dir=$(write_plugin "spoof-lock" '["service"]' '{"service": "Service.qml"}')
+jq '.omarchy = {clonedFrom: "omarchy.lock"}' "$dir/manifest.json" >"$dir/manifest.tmp"
+mv "$dir/manifest.tmp" "$dir/manifest.json"
+output=$(validate "$dir") && fail "validate refuses a manifest that claims the lock screen" "$output"
+grep -qF "clonedFrom 'omarchy.lock' names an authentication plugin" <<<"$output" \
+  || fail "validate explains that the lock screen stays packaged" "$output"
+pass "validate refuses a manifest that claims the lock screen"
+
+dir=$(write_plugin "spoof-polkit" '["service"]' '{"service": "Service.qml"}')
+jq '.omarchy = {clonedFrom: "omarchy.polkit"}' "$dir/manifest.json" >"$dir/manifest.tmp"
+mv "$dir/manifest.tmp" "$dir/manifest.json"
+output=$(validate "$dir") && fail "validate refuses a manifest that claims the polkit agent" "$output"
+grep -qF "clonedFrom 'omarchy.polkit' names an authentication plugin" <<<"$output" \
+  || fail "validate explains that the polkit agent stays packaged" "$output"
+pass "validate refuses a manifest that claims the polkit agent"
+
+dir=$(write_plugin "clock-clone" '["bar-widget"]' '{"barWidget": "Widget.qml"}')
+jq '.omarchy = {clonedFrom: "omarchy.clock"}' "$dir/manifest.json" >"$dir/manifest.tmp"
+mv "$dir/manifest.tmp" "$dir/manifest.json"
+validate "$dir" >/dev/null || fail "validate accepts clonedFrom for an ordinary built-in"
+pass "validate accepts clonedFrom for an ordinary built-in"

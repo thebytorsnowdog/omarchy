@@ -88,6 +88,22 @@ grep -qx 'omarchy-notification-send -g 󰐱 Editing Cloned Plugin Original plugi
   fail "clone does not notify that the editable clone is active"
 pass "clone enables bar widgets and confirms the editable clone"
 
+if clone_plugin omarchy.lock >/dev/null 2>"$TMPDIR/lock.err"; then
+  fail "clone refuses the lock screen"
+fi
+grep -qF "cannot clone omarchy.lock; the password dialog stays the packaged copy" "$TMPDIR/lock.err" ||
+  fail "clone explains why the lock screen stays packaged" "$(<"$TMPDIR/lock.err")"
+[[ ! -e $TMPDIR/home/.config/omarchy/plugins/tester.lock ]] ||
+  fail "clone does not leave a lock-screen directory behind"
+pass "clone refuses the lock screen"
+
+if clone_plugin omarchy.polkit >/dev/null 2>"$TMPDIR/polkit.err"; then
+  fail "clone refuses the polkit agent"
+fi
+grep -qF "cannot clone omarchy.polkit; the password dialog stays the packaged copy" "$TMPDIR/polkit.err" ||
+  fail "clone explains why the polkit agent stays packaged" "$(<"$TMPDIR/polkit.err")"
+pass "clone refuses the polkit agent"
+
 clone_plugin omarchy.keyboard-layout >/dev/null
 grep -qx 'omarchy-plugin-enable tester.keyboard-layout' "$CALLS" ||
   fail "clone does not enable a clone of a legacy string-form bar entry"
